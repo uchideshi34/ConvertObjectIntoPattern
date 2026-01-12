@@ -5,9 +5,11 @@ var switch_button = null
 
 const COMBINED_DATA_STORE = "UchideshiNodeData"
 
+var _lib_mod_config = null
+
 # Logging Functions
 const ENABLE_LOGGING = true
-const LOGGING_LEVEL = 0
+var logging_level = 0
 
 #########################################################################################################
 ##
@@ -17,8 +19,8 @@ const LOGGING_LEVEL = 0
 
 func outputlog(msg,level=0):
 	if ENABLE_LOGGING:
-		if level <= LOGGING_LEVEL:
-			printraw("(%d) <ConvertObjectToPattern>: " % OS.get_ticks_msec())
+		if level <= logging_level:
+			printraw("(%d) <ConvertObjectIntoPattern>: " % OS.get_ticks_msec())
 			print(msg)
 	else:
 		pass
@@ -79,7 +81,6 @@ func load_image_texture(texture_path: String):
 	
 	return texture
 
-# Function to draw a pattern shape on the current level, points are defined in pixels
 func draw_pattern(points: Array, texture: Texture, color: Color, layer: int):
 
 	outputlog("draw_pattern",2)
@@ -88,16 +89,30 @@ func draw_pattern(points: Array, texture: Texture, color: Color, layer: int):
 	outputlog("color: " + str(color),2)
 	outputlog("layer: " + str(layer),2)
 
+	var texture_path
+
+	var data = {
+		"position": "Vector2( 0, 0 )",
+		"shape_rotation": 0.0,
+		"scale": "Vector2( 1, 1 )",
+		"points": "PoolVector2Array( 0, 0, 256, 0, 256, 256, 0, 256 )",
+		"layer": layer,
+		"color": color.to_html(),
+		"outline": false,
+		"texture": str(texture.resource_path),
+		"rotation": 0.0
+	}
+
 	var node_id
-	var patternshape
-
+	
 	# DrawPolygon doesn't return a Node or a node id but we know it must be the next one
-	node_id = Global.World.nextNodeID
-	Global.World.GetCurrentLevel().PatternShapes.DrawPolygon(points,false)
 
-	# Reference the patternshape by the node id which must be the next one we guessed earlier
-	patternshape = Global.World.GetNodeByID(node_id)
+	outputlog("data: " + str(data),2)
+	
+	var patternshape = Global.World.GetCurrentLevel().PatternShapes.LoadShape(data)
+
 	if patternshape != null:
+		node_id = patternshape.get_meta("node_id")
 		outputlog("Found node with node_id: " + str(node_id),2)
 		# Check its node type
 		var type = get_node_type(patternshape)
@@ -105,8 +120,7 @@ func draw_pattern(points: Array, texture: Texture, color: Color, layer: int):
 		# Check that this is indeed a pattern shape
 		if type == "pattern_shapes":
 			# Set the relevant options
-			patternshape.SetOptions(texture, color, 0.0)
-			patternshape.SetLayer(layer)
+			patternshape.SetPoints(points, false)
 		else:
 			outputlog("type is not pattern_shape, something failed",2)
 	else:
@@ -342,6 +356,63 @@ func update(delta: float):
 
 #########################################################################################################
 ##
+## _LIB CONFIG FUNCTIONS
+##
+#########################################################################################################
+
+func make_lib_configs():
+
+	# Create a config builder to ensure we can update the offset if needed
+	var _lib_config_builder = Global.API.ModConfigApi.create_config()
+	_lib_config_builder\
+		.h_box_container().enter()\
+			.label("Core Log Level ")\
+			.option_button("core_log_level", 0, ["0","1","2","3","4"])\
+		.exit()
+	_lib_mod_config = _lib_config_builder.build()
+
+	logging_level = int(_lib_mod_config.core_log_level)
+
+#########################################################################################################
+##
+## VERSION CHECKER FUNCTIONS
+##
+#########################################################################################################
+
+# Check whether a semver strng 2 is greater than string one. Only works on simple comparisons - DO NOT USE THIS FUNCTION OUTSIDE THIS CONTEXT
+func compare_semver(semver1: String, semver2: String) -> bool:
+
+	outputlog("compare_semver: semver1: " + str(semver1) + " semver2" + str(semver2),2)
+	var semver1data = get_semver_data(semver1)
+	var semver2data = get_semver_data(semver2)
+
+	if semver1data == null || semver2data == null : return false
+
+	if semver1data["major"] != semver2data["major"]:
+		return semver1data["major"] < semver2data["major"]
+	if semver1data["minor"] != semver2data["minor"]:
+		return semver1data["minor"] < semver2data["minor"]
+	if semver1data["patch"] != semver2data["patch"]:
+		return semver1data["major"] < semver2data["major"]
+	
+	return false
+
+# Parse the semver string
+func get_semver_data(semver: String):
+
+	var data = {}
+
+	if semver.split(".").size() < 3: return null
+
+	return {
+		"major": int(semver.split(".")[0]),
+		"minor": int(semver.split(".")[1]),
+		"patch": int(semver.split(".")[2].split("-")[0])
+	}
+
+
+#########################################################################################################
+##
 ## START FUNCTION FUNCTION
 ##
 #########################################################################################################
@@ -353,8 +424,19 @@ func start() -> void:
 
 	if Engine.has_signal("_lib_register_mod"):
 		Engine.emit_signal("_lib_register_mod", self)
+		make_lib_configs()
+		var _lib_mod_meta = Global.API.ModRegistry.get_mod_info("CreepyCre._Lib").mod_meta
+		if _lib_mod_meta != null:
+			if compare_semver("1.1.2", _lib_mod_meta["version"]):
+				var update_checker = Global.API.UpdateChecker
+				
+				update_checker.register(Global.API.UpdateChecker.builder()\
+														.fetcher(update_checker.github_fetcher("uchideshi34", "ConvertObjectIntoPattern"))\
+														.downloader(update_checker.github_downloader("uchideshi34", "ConvertObjectIntoPattern"))\
+														.build())
 
 	make_change_object_to_pattern_ui()
+
 
 
 	
