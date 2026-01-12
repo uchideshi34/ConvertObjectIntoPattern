@@ -1,0 +1,8 @@
+{
+    "name": "Convert Object Into Pattern",
+    "unique_id": "uchideshi34.ConvertObjectIntoPattern",
+    "version": "1.1.0",
+    "author": "uchideshi34",
+    "description": "Adds feature to convert an object into a pattern.",
+    "dd_version": "1.1.0.6"
+}
